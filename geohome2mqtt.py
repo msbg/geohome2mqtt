@@ -55,8 +55,6 @@ class GeoHome:
         
         self.headers = ""
         self.deviceId = ""
-        self.authorise()
-        self.getDevice()
         self.connectMqtt()
         log = log + os.linesep + "End Intalising: " + str(datetime.now())
         print(log)
@@ -76,66 +74,81 @@ class GeoHome:
         self.deviceId = json.loads(r.text)['systemRoles'][0]['systemId']
         print( 'Device Id:' + self.deviceId)
         return
-  
+
+    def liveDataRequest(self):
+        log = os.linesep
+        r=requests.get(BASE_URL+LIVEDATA_URL+ self.deviceId, headers=self.headers)
+        if r.status_code != 200:    
+            log = log + os.linesep + "Live data Request Status Error:" + str(r.status_code) + ":" + r.reason
+        else:    
+            log = log + os.linesep + json.dumps(r.text)
+            power_dict =json.loads(r.text)['power']
+            #Try and find the electricity usage
+            try:
+                Electricity_usage=([x for x in power_dict if x['type'] == 'ELECTRICITY'][0]['watts'])
+                self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/ElectricityWatts", Electricity_usage)
+                log = log + os.linesep + "Electricity_usage:"+str(Electricity_usage)
+            except:
+                # Cant find Electricity in list. Add to log file but do nothing else
+                log = log + os.linesep + "No Electricity reading found"                    
+
+            try:
+                Gas_usage=([x for x in power_dict if x['type'] == 'GAS_ENERGY'][0]['watts'])
+                self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/GasWatts", Gas_usage)
+                log = log + os.linesep + "Gas Usage:" + str(Gas_usage)
+            except:
+                # Cant find Gas in list. Add to log file but do nothing else
+                log = log + os.linesep + "No Gas reading found"
+        print(log)  
+    
+    def periodicDataRequest(self):
+        log = os.linesep
+        p=requests.get(BASE_URL+PERIODICDATA_URL+ self.deviceId, headers=self.headers)
+        if p.status_code != 200:    
+            log = log + os.linesep + "Periodic Request Status Error:" + str(p.status_code) + ":" + p.reason
+        else:    
+            log = log + os.linesep + json.dumps(p.text)
+            power_dict =json.loads(p.text)['totalConsumptionList']
+            #Try and find the electricity usage
+            try:
+                Electricity_usage=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
+                self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
+                log = log + os.linesep + "Agg Electricity Usage:"+str(Electricity_usage)
+            except:
+                # Cant find Electricity in list. Add to log file but do nothing else
+                log = log + os.linesep + "No Agg Electricity reading found"                    
+
+            try:
+                Gas_usage=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
+                self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/Gas", Gas_usage)
+                log = log + os.linesep + "Agg Gas Usage:" + str(Gas_usage)
+            except:
+                # Cant find Gas in list. Add to log file but do nothing else
+                log = log + os.linesep + "No Agg Gas reading found"
+        print(log)  
+
     def run(self):
-        last_periodic_request = time.time() - (PERIODIC_DATA_POLL + 1) 
-        last_auth_request = time.time()
+        last_periodic_request = 0 
+        last_auth_request = 0
         while True:
             
-            log ="Start Api Call: " + str(datetime.now())
-            if time.time() > last_periodic_request + AUTH_POLL:
+            print("Start Api Call: " + str(datetime.now()))
+            #Re-auth every AUTH_POLL secs
+            if time.time() > last_auth_request + AUTH_POLL:
                 self.authorise()
                 self.getDevice()
-            r=requests.get(BASE_URL+LIVEDATA_URL+ self.deviceId, headers=self.headers)
-            if r.status_code != 200:    
-                log = log + os.linesep + "Request Status Error:" + str(r.status_code)
-            else:    
-                log = log + os.linesep + json.dumps(r.text)
-                power_dict =json.loads(r.text)['power']
-                #Try and find the electricity usage
-                try:
-                    Electricity_usage=([x for x in power_dict if x['type'] == 'ELECTRICITY'][0]['watts'])
-                    self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/ElectricityWatts", Electricity_usage)
-                    log = log + os.linesep + "Electricity_usage:"+str(Electricity_usage)
-                except:
-                    # Cant find Electricity in list. Add to log file but do nothing else
-                    log = log + os.linesep + "No Electricity reading found"                    
-    
-                try:
-                    Gas_usage=([x for x in power_dict if x['type'] == 'GAS_ENERGY'][0]['watts'])
-                    self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/GasWatts", Gas_usage)
-                    log = log + os.linesep + "Gas Usage:" + str(Gas_usage)
-                except:
-                    # Cant find Gas in list. Add to log file but do nothing else
-                    log = log + os.linesep + "No Gas reading found"
-            if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
-                p=requests.get(BASE_URL+PERIODICDATA_URL+ self.deviceId, headers=self.headers)
-                if p.status_code != 200:    
-                    log = log + os.linesep + "Request Status Error:" + str(p.status_code)
-                else:    
-                    log = log + os.linesep + json.dumps(p.text)
-                    power_dict =json.loads(p.text)['totalConsumptionList']
-                    #Try and find the electricity usage
-                    try:
-                        Electricity_usage=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
-                        self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/ElectricityWatts", Electricity_usage)
-                        log = log + os.linesep + "Agg Electricity_usage:"+str(Electricity_usage)
-                    except:
-                        # Cant find Electricity in list. Add to log file but do nothing else
-                        log = log + os.linesep + "No Agg Electricity reading found"                    
-        
-                    try:
-                        Gas_usage=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
-                        self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/GasWatts", Gas_usage)
-                        log = log + os.linesep + "Agg Gas Usage:" + str(Gas_usage)
-                    except:
-                        # Cant find Gas in list. Add to log file but do nothing else
-                        log = log + os.linesep + "No Agg Gas reading found"
-                last_periodic_request = time.time()   
-                
-            time.sleep(LIVE_DATA_POLL)
+                last_auth_request = time.time()
             
-            print(log)  
+            #Request periodic data every PERIODIC_DATA_POLL secs
+            if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
+                self.periodicDataRequest()
+                last_periodic_request = time.time()   
+            
+            #Always request the live data
+            self.liveDataRequest()   
+            print("Sleeping for:" + str(LIVE_DATA_POLL)) 
+            time.sleep(LIVE_DATA_POLL)
+
             
 # ConvertToKWH converts m3 to kWh
 def ConvertToKWH(m3 , calorificValue):

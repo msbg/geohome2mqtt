@@ -3,11 +3,11 @@ version: "3"
 services:
   geohome2mqtt:
     build: .
-#    image: xxxx/geohome2mqtt:2022.01.0
+#    image: msbg/geohome2mqtt:latest
     environment:
       GEOHOME_USERNAME: ${GEOHOME_USERNAME}
       GEOHOME_PASSWORD: ${GEOHOME_PASSWORD}
       MQTT_BROKER: ${MQTT_BROKER}
       MQTT_TOPIC: geohome2mqtt
-      HASS_DISCOVERY: "true" 
+#      HASS_DISCOVERY: "true" 
       PYTHONUNBUFFERED: 1

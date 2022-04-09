@@ -13,10 +13,13 @@ PERIODICDATA_URL = 'api/userapi/system/smets2-periodic-data/'
 MQTT_ROOT = "geoHome"
 MQTT_LIVE = "live"
 MQTT_AGG = "totalConsumption"
+AUTH_POLL = (60 * 60 * 11) #Re-request auth every 11 hours
+LIVE_DATA_POLL = 30 #Re-request live data every 30 secs
+PERIODIC_DATA_POLL = (30 * 60) #Re-request periodic data every 30 mins
 CALORIFIC_VALUE = 39.5
 
-USERNAME_KEY = "GEOHOME_USERNAME"
-PASSWORD_KEY = "GEOHOME_PASSWORD"
+USERNAME_ENV_VAR = "GEOHOME_USERNAME"
+PASSWORD_ENV_VAR = "GEOHOME_PASSWORD"
 MQTT_BROKER_ENV_VAR = "MQTT_BROKER"
 
 class GeoHome:
@@ -26,19 +29,19 @@ class GeoHome:
         log = "Start Intalising: " + str(datetime.now())
         
         try:
-            if os.environ[USERNAME_KEY]:
-                self.varUserName = os.environ[USERNAME_KEY]
-                print("Setting usename to:", os.environ[USERNAME_KEY])
+            if os.environ[USERNAME_ENV_VAR]:
+                self.varUserName = os.environ[USERNAME_ENV_VAR]
+                print("Setting usename to:", os.environ[USERNAME_ENV_VAR])
         except KeyError:
-            print(USERNAME_KEY, 'environment variable is not set.')
+            print(USERNAME_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
         try:
-            if os.environ[PASSWORD_KEY]:
-                self.varPassword = os.environ[PASSWORD_KEY]
-                print("Setting password to:", os.environ[PASSWORD_KEY])
+            if os.environ[PASSWORD_ENV_VAR]:
+                self.varPassword = os.environ[PASSWORD_ENV_VAR]
+                print("Setting password from ", PASSWORD_ENV_VAR)
         except KeyError:
-            print(PASSWORD_KEY, 'environment variable is not set.')
+            print(PASSWORD_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
         try:
@@ -75,19 +78,17 @@ class GeoHome:
         return
   
     def run(self):
-        periodic_count = 0
+        last_periodic_request = time.time() - (PERIODIC_DATA_POLL + 1) 
+        last_auth_request = time.time()
         while True:
             
             log ="Start Api Call: " + str(datetime.now())
-            
-            r=requests.get(BASE_URL+LIVEDATA_URL+ self.deviceId, headers=self.headers)
-            #p=requests.get(BASE_URL+PERIODICDATA_URL+ self.deviceId, headers=self.headers)
-            if r.status_code != 200:
-                #Not successful. Assume Authentication Error
-                log = log + os.linesep + "Request Status Error:" + str(r.status_code)
-                #Reauthenticate. Need to add more error trapping here in case api goes down.
+            if time.time() > last_periodic_request + AUTH_POLL:
                 self.authorise()
                 self.getDevice()
+            r=requests.get(BASE_URL+LIVEDATA_URL+ self.deviceId, headers=self.headers)
+            if r.status_code != 200:    
+                log = log + os.linesep + "Request Status Error:" + str(r.status_code)
             else:    
                 log = log + os.linesep + json.dumps(r.text)
                 power_dict =json.loads(r.text)['power']
@@ -107,9 +108,11 @@ class GeoHome:
                 except:
                     # Cant find Gas in list. Add to log file but do nothing else
                     log = log + os.linesep + "No Gas reading found"
-            if periodic_count == 0:
+            if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
                 p=requests.get(BASE_URL+PERIODICDATA_URL+ self.deviceId, headers=self.headers)
-                if p.status_code == 200: 
+                if p.status_code != 200:    
+                    log = log + os.linesep + "Request Status Error:" + str(p.status_code)
+                else:    
                     log = log + os.linesep + json.dumps(p.text)
                     power_dict =json.loads(p.text)['totalConsumptionList']
                     #Try and find the electricity usage
@@ -128,13 +131,9 @@ class GeoHome:
                     except:
                         # Cant find Gas in list. Add to log file but do nothing else
                         log = log + os.linesep + "No Agg Gas reading found"
-                    
-            #reset the periodic count every 20 mins
-            periodic_count = periodic_count + 1
-            if periodic_count > 20*2:
-                periodic_count = 0
-            #Always wait 30 secs here, so if worst happens and API goes down is we try every 30 secs.    
-            time.sleep(30)
+                last_periodic_request = time.time()   
+                
+            time.sleep(LIVE_DATA_POLL)
             
             print(log)  
             

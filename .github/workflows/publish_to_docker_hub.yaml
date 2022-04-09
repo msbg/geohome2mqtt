@@ -4,12 +4,12 @@ name: "Publish to Docker Hub"
 on:
   push:
     branches:
-      - 'master'
+      - 'main'
     tags:
       - 'v*'
   pull_request:
     branches:
-      - 'master'
+      - 'main'
 
 jobs:
   publish_to_docker_hub:

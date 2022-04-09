@@ -8,6 +8,9 @@ services:
       GEOHOME_USERNAME: ${GEOHOME_USERNAME}
       GEOHOME_PASSWORD: ${GEOHOME_PASSWORD}
       MQTT_BROKER: ${MQTT_BROKER}
-      MQTT_TOPIC: geohome2mqtt
+#Not yet implemented
 #      HASS_DISCOVERY: "true" 
       PYTHONUNBUFFERED: 1
+#Other optional settings - these are the defaults:
+#      MQTT_TOPIC: geohome2mqtt 
+#      MQTT_PORT: 1883

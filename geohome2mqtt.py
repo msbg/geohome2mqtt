@@ -10,7 +10,6 @@ LOGIN_URL='usersservice/v2/login'
 DEVICEDETAILS_URL='api/userapi/v2/user/detail-systems?systemDetails=true'
 LIVEDATA_URL = 'api/userapi/system/smets2-live-data/'
 PERIODICDATA_URL = 'api/userapi/system/smets2-periodic-data/'
-MQTT_ROOT = "geoHome"
 MQTT_LIVE = "live"
 MQTT_AGG = "totalConsumption"
 AUTH_POLL = (60 * 60 * 11) #Re-request auth every 11 hours
@@ -21,6 +20,8 @@ CALORIFIC_VALUE = 39.5
 USERNAME_ENV_VAR = "GEOHOME_USERNAME"
 PASSWORD_ENV_VAR = "GEOHOME_PASSWORD"
 MQTT_BROKER_ENV_VAR = "MQTT_BROKER"
+MQTT_PORT_ENV_VAR = "MQTT_PORT"
+MQTT_TOPIC_ENV_VAR = "MQTT_TOPIC"
 
 class GeoHome:
       
@@ -44,14 +45,27 @@ class GeoHome:
             print(PASSWORD_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
-        try:
-            if os.environ[MQTT_BROKER_ENV_VAR]:
-                self.varMqttBroker = os.environ[MQTT_BROKER_ENV_VAR]
-                print("Setting Mqtt broker to:", os.environ[MQTT_BROKER_ENV_VAR])
-        except KeyError:
+        if os.environ[MQTT_BROKER_ENV_VAR]:
+            self.varMqttBroker = os.environ[MQTT_BROKER_ENV_VAR]
+            print("Setting Mqtt broker to:", os.environ[MQTT_BROKER_ENV_VAR])
+        else:
             print(MQTT_BROKER_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
+        try:
+            if os.environ[MQTT_PORT_ENV_VAR]:
+                self.varMqttPort = int(os.environ[MQTT_PORT_ENV_VAR])
+                print("Setting Mqtt port to:",self.varMqttPort)
+        except KeyError:
+            print(MQTT_PORT_ENV_VAR, 'environment variable is not set - using default of 1883')
+            self.varMqttPort = 1883
+        try:
+            if os.environ[MQTT_TOPIC_ENV_VAR]:
+                self.varMqttTopic = os.environ[MQTT_TOPIC_ENV_VAR]
+                print("Setting Mqtt topic to:", os.environ[MQTT_TOPIC_ENV_VAR])
+        except KeyError:
+            print(MQTT_TOPIC_ENV_VAR, 'environment variable is not set - using default of \'geohome2mqtt\'')
+            self.varMqttTopic = "geohome2mqtt"
         
         self.headers = ""
         self.deviceId = ""
@@ -61,7 +75,7 @@ class GeoHome:
   
     def connectMqtt(self):
         self.client = mqtt.Client("Geohome bridge")
-        self.client.connect(self.varMqttBroker) 
+        self.client.connect(self.varMqttBroker, self.varMqttPort) 
     def authorise(self):
        data = { 'identity' : self.varUserName , 'password' : self.varPassword }
        r=requests.post(BASE_URL+LOGIN_URL, data=json.dumps(data), verify=False)
@@ -86,7 +100,7 @@ class GeoHome:
             #Try and find the electricity usage
             try:
                 Electricity_usage=([x for x in power_dict if x['type'] == 'ELECTRICITY'][0]['watts'])
-                self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/ElectricityWatts", Electricity_usage)
+                self.client.publish(self.varMqttTopic  + "/" + MQTT_LIVE + "/ElectricityWatts", Electricity_usage)
                 log = log + os.linesep + "Electricity_usage:"+str(Electricity_usage)
             except:
                 # Cant find Electricity in list. Add to log file but do nothing else
@@ -94,7 +108,7 @@ class GeoHome:
 
             try:
                 Gas_usage=([x for x in power_dict if x['type'] == 'GAS_ENERGY'][0]['watts'])
-                self.client.publish(MQTT_ROOT  + "/" + MQTT_LIVE + "/GasWatts", Gas_usage)
+                self.client.publish(self.varMqttTopic  + "/" + MQTT_LIVE + "/GasWatts", Gas_usage)
                 log = log + os.linesep + "Gas Usage:" + str(Gas_usage)
             except:
                 # Cant find Gas in list. Add to log file but do nothing else
@@ -112,7 +126,7 @@ class GeoHome:
             #Try and find the electricity usage
             try:
                 Electricity_usage=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
-                self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
+                self.client.publish(self.varMqttTopic  + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
                 log = log + os.linesep + "Agg Electricity Usage:"+str(Electricity_usage)
             except:
                 # Cant find Electricity in list. Add to log file but do nothing else
@@ -120,7 +134,7 @@ class GeoHome:
 
             try:
                 Gas_usage=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
-                self.client.publish(MQTT_ROOT  + "/" + MQTT_AGG + "/Gas", Gas_usage)
+                self.client.publish(self.varMqttTopic  + "/" + MQTT_AGG + "/Gas", Gas_usage)
                 log = log + os.linesep + "Agg Gas Usage:" + str(Gas_usage)
             except:
                 # Cant find Gas in list. Add to log file but do nothing else

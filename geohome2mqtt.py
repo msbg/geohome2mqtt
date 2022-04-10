@@ -14,6 +14,7 @@ LIVEDATA_URL = 'api/userapi/system/smets2-live-data/'
 PERIODICDATA_URL = 'api/userapi/system/smets2-periodic-data/'
 MQTT_LIVE = "live"
 MQTT_AGG = "totalConsumption"
+MQTT_ACTIVE_TARIFF = "activeTariff"
 AUTH_POLL = (60 * 60 * 11) #Re-request auth every 11 hours
 LIVE_DATA_POLL = 30 #Re-request live data every 30 secs
 PERIODIC_DATA_POLL = (30 * 60) #Re-request periodic data every 30 mins
@@ -155,19 +156,27 @@ class GeoHome:
         else:    
             log = log + os.linesep + json.dumps(p.text)
             power_dict =json.loads(p.text)['totalConsumptionList']
+            tariff_dict =json.loads(p.text)['activeTariffList']
             #Try and find the electricity usage
             try:
-                Electricity_usage=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
-                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
-                log = log + os.linesep + "Agg Electricity Usage:"+str(Electricity_usage)
+                electricityUsageKWh=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Electricity", electricityUsageKWh)
+                electricityTariff=([x for x in tariff_dict if x['commodityType'] == 'ELECTRICITY'][0]['activeTariffPrice'])
+                #I /think/ this is in pence per kWh, but need some data to verify - we're publishing in GBP/kWh so *100
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_ACTIVE_TARIFF + "/Electricity", str(electricityTariff/100))
+                log = log + os.linesep + "Agg Electricity Usage:"+str(electricityUsageKWh)
             except:
                 # Cant find Electricity in list. Add to log file but do nothing else
                 log = log + os.linesep + "No Agg Electricity reading found"                    
 
             try:
-                Gas_usage=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
-                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Gas", str(self.ConvertToKWH(Gas_usage)))
-                log = log + os.linesep + "Agg Gas Usage:" + str(Gas_usage)
+                gasUsageM3=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
+                gasUsageKWh = self.ConvertToKWH(gasUsageM3)
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Gas", str(gasUsageKWh))
+                gasTariff=([x for x in tariff_dict if x['commodityType'] == 'GAS_ENERGY'][0]['activeTariffPrice'])
+                #I /think/ this is in pence per kWh, but need some data to verify - we're publishing in GBP/kWh so *100
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_ACTIVE_TARIFF + "/Gas", str(gasTariff/100))
+                log = log + os.linesep + "Agg Gas Usage:" + str(gasUsageKWh)
             except:
                 traceback.print_exc()
                 # Cant find Gas in list. Add to log file but do nothing else
@@ -186,6 +195,8 @@ class GeoHome:
             self.getDiscoveryMessage(MQTT_LIVE, "Electricity", "W", "mdi:lightning-bolt", "power", "measurement")
             self.getDiscoveryMessage(MQTT_AGG, "Gas", "kWh", "mdi:fire", "energy", "total")
             self.getDiscoveryMessage(MQTT_AGG, "Electricity", "kWh", "mdi:lightning-bolt", "energy", "total")
+            self.getDiscoveryMessage(MQTT_ACTIVE_TARIFF, "Gas", "GBP/kWh", "mdi:currency-gbp", "monetary", "measurement")
+            self.getDiscoveryMessage(MQTT_ACTIVE_TARIFF, "Electricity", "GBP/kWh", "mdi:currency-gbp", "monetary", "measurement")
             self.discoverySent = True
     def getDiscoveryMessage(self, type, source, unit_of_measurement, icon, device_class, state_class):
         discovery_payload = {
@@ -224,8 +235,8 @@ class GeoHome:
             
             #Request periodic data every PERIODIC_DATA_POLL secs
             if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
-                self.periodicDataRequest()
                 self.sendHassDiscovery()
+                self.periodicDataRequest()
                 last_periodic_request = time.time()   
             
             #Always request the live data

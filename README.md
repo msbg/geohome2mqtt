@@ -20,14 +20,14 @@ All environment variables are defined in the example [`docker-compose.yml`](http
 
 ## Status
 Support confirmed:
-  live Gas power data (Watts) 
-  total consumption data (kWh) - gas is converted from m3 
+  * live Gas power data (Watts) 
+  * total consumption data (kWh) - gas is converted from m3 
   
 Testing undergoing for:
-  live Electricity power data (Watts) - my supplier hasn't turned this on yet, so I can't test
-  total consumption data (kWh) - as above.
-  live tariff data gas - confirming once more data gathered
-  live tariff data electricity - as above.
+  * live Electricity power data (Watts) - my supplier hasn't turned this on yet, so I can't test
+  * total consumption data (kWh) - as above.
+  * live tariff data gas - confirming once more data gathered
+  * live tariff data electricity - as above.
 
 
 ## Tested countries/devices:

@@ -8,9 +8,10 @@ services:
       GEOHOME_USERNAME: ${GEOHOME_USERNAME}
       GEOHOME_PASSWORD: ${GEOHOME_PASSWORD}
       MQTT_BROKER: ${MQTT_BROKER}
-#Not yet implemented
-#      HASS_DISCOVERY: "true" 
       PYTHONUNBUFFERED: 1
+      HASS_DISCOVERY: "true" #default is false
+      GAS_CALORIFIC_VAL: 39 #default is 39.5 - this was on my bill for the m3->kWh conversion
 #Other optional settings - these are the defaults:
 #      MQTT_TOPIC: geohome2mqtt 
 #      MQTT_PORT: 1883
+#      HASS_DISCOVERY_PERSIST: "true"

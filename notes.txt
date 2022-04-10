@@ -1,0 +1,5 @@
+To install module manually:
+C:\monica\geoHome2MQTT\.venv\Scripts\python -m pip install xxxxx
+
+To freeze installed modules into requirements.txt:
+C:\monica\geoHome2MQTT\.venv\Scripts\python -m pip freeze > requirements.txt

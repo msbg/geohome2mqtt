@@ -1,5 +1,7 @@
+import traceback
 import requests, json
 import paho.mqtt.client as mqtt
+from str2bool import str2bool
 import time
 from datetime import datetime
 import os
@@ -22,6 +24,9 @@ PASSWORD_ENV_VAR = "GEOHOME_PASSWORD"
 MQTT_BROKER_ENV_VAR = "MQTT_BROKER"
 MQTT_PORT_ENV_VAR = "MQTT_PORT"
 MQTT_TOPIC_ENV_VAR = "MQTT_TOPIC"
+HASS_DICOVERY_ENV_VAR = "HASS_DISCOVERY"
+HASS_DICOVERY_PERSIST_ENV_VAR = "HASS_DISCOVERY_PERSIST"
+GAS_CALORIFIC_VAL_ENV_VAR = "GAS_CALORIFIC_VAL"
 
 class GeoHome:
       
@@ -45,10 +50,11 @@ class GeoHome:
             print(PASSWORD_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
-        if os.environ[MQTT_BROKER_ENV_VAR]:
-            self.varMqttBroker = os.environ[MQTT_BROKER_ENV_VAR]
-            print("Setting Mqtt broker to:", os.environ[MQTT_BROKER_ENV_VAR])
-        else:
+        try:
+            if os.environ[MQTT_BROKER_ENV_VAR]:
+                self.varMqttBroker = os.environ[MQTT_BROKER_ENV_VAR]
+                print("Setting Mqtt broker to:", os.environ[MQTT_BROKER_ENV_VAR])
+        except KeyError:
             print(MQTT_BROKER_ENV_VAR, 'environment variable is not set.')
             # Terminate from the script
             sys.exit(1)
@@ -66,9 +72,32 @@ class GeoHome:
         except KeyError:
             print(MQTT_TOPIC_ENV_VAR, 'environment variable is not set - using default of \'geohome2mqtt\'')
             self.varMqttTopic = "geohome2mqtt"
+        try:
+            if os.environ[HASS_DICOVERY_ENV_VAR]:
+                self.varHassDiscovery = str2bool(os.environ[HASS_DICOVERY_ENV_VAR])
+                print("Setting HASS Discovery to:", self.varHassDiscovery)
+        except KeyError:
+            self.varHassDiscovery = False
+            print(HASS_DICOVERY_ENV_VAR, 'environment variable is not set - using default of:', self.varHassDiscovery)
+        try:
+            if os.environ[HASS_DICOVERY_PERSIST_ENV_VAR]:
+                self.varHassDiscoveryRetain = str2bool(os.environ[HASS_DICOVERY_PERSIST_ENV_VAR])
+                print("Setting HASS Discovery Persist to:", self.varHassDiscoveryRetain)
+        except KeyError:
+            self.varHassDiscoveryRetain = True
+            print(HASS_DICOVERY_PERSIST_ENV_VAR, 'environment variable is not set - using default of:', self.varHassDiscovery)
+        try:
+            if os.environ[GAS_CALORIFIC_VAL_ENV_VAR]:
+                self.gasCalorificValue = float(os.environ[GAS_CALORIFIC_VAL_ENV_VAR])
+                print("Setting Gas calorific value to:", self.gasCalorificValue)
+        except KeyError:
+            self.gasCalorificValue = CALORIFIC_VALUE
+            print(GAS_CALORIFIC_VAL_ENV_VAR, 'environment variable is not set - using default of:', self.gasCalorificValue)
+        
         
         self.headers = ""
         self.deviceId = ""
+        self.discoverySent = False # We send the discovery info at least once, on startup, and every period poll if not persisted at the MQTT level
         self.connectMqtt()
         log = log + os.linesep + "End Intalising: " + str(datetime.now())
         print(log)
@@ -85,8 +114,11 @@ class GeoHome:
    
     def getDevice(self):
         r=requests.get(BASE_URL+DEVICEDETAILS_URL, headers=self.headers)
+        print(json.dumps(r.text))
         self.deviceId = json.loads(r.text)['systemRoles'][0]['systemId']
+        self.deviceName = json.loads(r.text)['systemDetails'][0]['devices'][0]['deviceType']
         print( 'Device Id:' + self.deviceId)
+        print( 'Device Name:' + self.deviceName)
         return
 
     def liveDataRequest(self):
@@ -100,7 +132,7 @@ class GeoHome:
             #Try and find the electricity usage
             try:
                 Electricity_usage=([x for x in power_dict if x['type'] == 'ELECTRICITY'][0]['watts'])
-                self.client.publish(self.varMqttTopic  + "/" + MQTT_LIVE + "/ElectricityWatts", Electricity_usage)
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId +"/" + MQTT_LIVE + "/Electricity", Electricity_usage)
                 log = log + os.linesep + "Electricity_usage:"+str(Electricity_usage)
             except:
                 # Cant find Electricity in list. Add to log file but do nothing else
@@ -108,7 +140,7 @@ class GeoHome:
 
             try:
                 Gas_usage=([x for x in power_dict if x['type'] == 'GAS_ENERGY'][0]['watts'])
-                self.client.publish(self.varMqttTopic  + "/" + MQTT_LIVE + "/GasWatts", Gas_usage)
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_LIVE + "/Gas", Gas_usage)
                 log = log + os.linesep + "Gas Usage:" + str(Gas_usage)
             except:
                 # Cant find Gas in list. Add to log file but do nothing else
@@ -126,7 +158,7 @@ class GeoHome:
             #Try and find the electricity usage
             try:
                 Electricity_usage=([x for x in power_dict if x['commodityType'] == 'ELECTRICITY'][0]['totalConsumption'])
-                self.client.publish(self.varMqttTopic  + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Electricity", Electricity_usage)
                 log = log + os.linesep + "Agg Electricity Usage:"+str(Electricity_usage)
             except:
                 # Cant find Electricity in list. Add to log file but do nothing else
@@ -134,12 +166,49 @@ class GeoHome:
 
             try:
                 Gas_usage=([x for x in power_dict if x['commodityType'] == 'GAS_ENERGY'][0]['totalConsumption'])
-                self.client.publish(self.varMqttTopic  + "/" + MQTT_AGG + "/Gas", Gas_usage)
+                self.client.publish(self.varMqttTopic  + "/" + self.deviceId + "/" + MQTT_AGG + "/Gas", str(self.ConvertToKWH(Gas_usage)))
                 log = log + os.linesep + "Agg Gas Usage:" + str(Gas_usage)
             except:
+                traceback.print_exc()
                 # Cant find Gas in list. Add to log file but do nothing else
                 log = log + os.linesep + "No Agg Gas reading found"
-        print(log)  
+        print(log) 
+
+    # ConvertToKWH converts m3 to kWh
+    def ConvertToKWH(self, m3):
+        print("converting.." + str(m3))
+        converted = (((m3 / 1000) * self.gasCalorificValue) * 1.02264) / 3.6
+        print("converted.." + str(converted))
+        return converted    
+    def sendHassDiscovery(self):
+        if self.discoverySent==False or self.varHassDiscoveryRetain==False:
+            self.getDiscoveryMessage(MQTT_LIVE, "Gas", "W", "mdi:fire", "power", "measurement")
+            self.getDiscoveryMessage(MQTT_LIVE, "Electricity", "W", "mdi:lightning-bolt", "power", "measurement")
+            self.getDiscoveryMessage(MQTT_AGG, "Gas", "kWh", "mdi:fire", "energy", "total")
+            self.getDiscoveryMessage(MQTT_AGG, "Electricity", "kWh", "mdi:lightning-bolt", "energy", "total")
+            self.discoverySent = True
+    def getDiscoveryMessage(self, type, source, unit_of_measurement, icon, device_class, state_class):
+        discovery_payload = {
+               # "availability_topic": self._get_topic(
+               #     key, description.platform, "availability"
+               # ),
+                "device": {
+                    "identifiers": [self.deviceId],
+                    "manufacturer": self.deviceName,
+                    "model": self.deviceName,
+                    "name": self.deviceName,
+                    "sw_version": self.deviceName,
+                },
+                "name":f"geoHome_{type}_{source}",
+                "device_class": device_class,
+              #  "qos": 1,
+                "unit_of_measurement": unit_of_measurement,
+                "icon": icon,
+                "state_topic": f"{self.varMqttTopic}/{self.deviceId}/{type}/{source}",
+                "unique_id": f"{self.deviceId}_{type}_{source}_Id",
+                "state_class": state_class
+            }
+        self.client.publish(f"homeassistant/sensor/{self.deviceId}/{type}{source}/config", json.dumps(discovery_payload).encode("utf-8"), retain=self.varHassDiscoveryRetain)
 
     def run(self):
         last_periodic_request = 0 
@@ -156,6 +225,7 @@ class GeoHome:
             #Request periodic data every PERIODIC_DATA_POLL secs
             if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
                 self.periodicDataRequest()
+                self.sendHassDiscovery()
                 last_periodic_request = time.time()   
             
             #Always request the live data
@@ -164,9 +234,6 @@ class GeoHome:
             time.sleep(LIVE_DATA_POLL)
 
             
-# ConvertToKWH converts m3 to kWh
-def ConvertToKWH(m3 , calorificValue):
-	return (((m3 / 1000) * calorificValue) * 1.02264) / 3.6
 
 t1 = GeoHome()
 t1.run()

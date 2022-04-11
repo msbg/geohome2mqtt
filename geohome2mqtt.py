@@ -15,9 +15,9 @@ PERIODICDATA_URL = 'api/userapi/system/smets2-periodic-data/'
 MQTT_LIVE = "live"
 MQTT_AGG = "totalConsumption"
 MQTT_ACTIVE_TARIFF = "activeTariff"
-AUTH_POLL = (60 * 60 * 11) #Re-request auth every 11 hours
+AUTH_POLL = (50 * 60 ) #Re-request auth every 50 minutes
 LIVE_DATA_POLL = 30 #Re-request live data every 30 secs
-PERIODIC_DATA_POLL = (30 * 60) #Re-request periodic data every 30 mins
+PERIODIC_DATA_POLL = ( 60) #Re-request periodic data every 30 mins
 CALORIFIC_VALUE = 39.5
 
 USERNAME_ENV_VAR = "GEOHOME_USERNAME"
@@ -110,6 +110,7 @@ class GeoHome:
        data = { 'identity' : self.varUserName , 'password' : self.varPassword }
        r=requests.post(BASE_URL+LOGIN_URL, data=json.dumps(data), verify=False)
        authToken = json.loads(r.text)['accessToken']
+       print(authToken)
        self.headers = {"Authorization": "Bearer " + authToken}
        return
    

@@ -15,9 +15,9 @@ PERIODICDATA_URL = 'api/userapi/system/smets2-periodic-data/'
 MQTT_LIVE = "live"
 MQTT_AGG = "totalConsumption"
 MQTT_ACTIVE_TARIFF = "activeTariff"
-AUTH_POLL = (50 * 60 ) #Re-request auth every 50 minutes
-LIVE_DATA_POLL = 30 #Re-request live data every 30 secs
-PERIODIC_DATA_POLL = ( 60) #Re-request periodic data every 30 mins
+AUTH_POLL = (50 * 60 ) #Re-request auth  in secs
+LIVE_DATA_POLL = (2 * 60) #Re-request live data in secs
+PERIODIC_DATA_POLL = ( 5 * 60) #Re-request periodic data every in secs
 CALORIFIC_VALUE = 39.5
 
 USERNAME_ENV_VAR = "GEOHOME_USERNAME"
@@ -225,24 +225,30 @@ class GeoHome:
     def run(self):
         last_periodic_request = 0 
         last_auth_request = 0
-        while True:
-            
-            print("Start Api Call: " + str(datetime.now()))
-            #Re-auth every AUTH_POLL secs
-            if time.time() > last_auth_request + AUTH_POLL:
-                self.authorise()
-                self.getDevice()
-                last_auth_request = time.time()
-            
-            #Request periodic data every PERIODIC_DATA_POLL secs
-            if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
-                self.sendHassDiscovery()
-                self.periodicDataRequest()
-                last_periodic_request = time.time()   
-            
-            #Always request the live data
-            self.liveDataRequest()   
-            print("Sleeping for:" + str(LIVE_DATA_POLL)) 
+        retry_count = 0
+        while retry_count < 5:
+            try:
+                print("Start Api Call: " + str(datetime.now()))
+                #Re-auth every AUTH_POLL secs
+                if time.time() > last_auth_request + AUTH_POLL:
+                    self.authorise()
+                    self.getDevice()
+                    last_auth_request = time.time()
+                
+                #Request periodic data every PERIODIC_DATA_POLL secs
+                if time.time() > last_periodic_request + PERIODIC_DATA_POLL:
+                    self.sendHassDiscovery()
+                    self.periodicDataRequest()
+                    last_periodic_request = time.time()   
+                
+                #Always request the live data
+                self.liveDataRequest()
+                retry_count = 0   
+            except: 
+                retry_count = retry_count+1
+                print("ERROR! - retry " + retry_count)
+                traceback.print_exc()
+            print("Sleeping for:" + str(LIVE_DATA_POLL))
             time.sleep(LIVE_DATA_POLL)
 
             
